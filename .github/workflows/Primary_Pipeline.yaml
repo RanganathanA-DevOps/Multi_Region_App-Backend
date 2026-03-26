@@ -120,16 +120,18 @@ jobs:
         with:
           token: ${{ secrets.DEPLOYMENT_REPO_PAT }}
           repository: ${{ vars.DEPLOYMENT_REPO_NAME }}
-          ref: ${{ vars.DEPLOYMENT_BRANCH_NAME}}
+          ref: ${{ vars.DEPLOYMENT_BRANCH_NAME }}
           path: repo-to-update
           fetch-depth: 0
 
       - name: Update image tag in deployment file
         run: |
           cd repo-to-update
-          # IMAGE_TAG="${{ needs.build-and-deploy.outputs.image_tag }}"
+          IMAGE_TAG="${{ needs.build-and-deploy.outputs.image_tag }}"
           
           echo "Updating deployment with image tag: ${{ env.IMAGE_TAG }}"
+          echo "Deployment file path: ${{ env.DEPLOYMENT_FILE_PATH }}"
+          echo "Repository name: ${{ env.REPO_NAME }}"
           
           # Check if file exists
           if [ ! -f "${{ env.DEPLOYMENT_FILE_PATH }}" ]; then
@@ -154,6 +156,7 @@ jobs:
       - name: Commit and push changes
         run: |
           cd repo-to-update
+          IMAGE_TAG="${{ needs.build-and-deploy.outputs.image_tag }}"
           
           # Configure git
           git config user.email "${{ vars.GIT_USER_EMAIL }}"
@@ -161,7 +164,7 @@ jobs:
           
           # Check if there are changes to commit
           if git diff --quiet ${{ env.DEPLOYMENT_FILE_PATH }}; then
-            echo "No changes to commit"
+            echo "No changes to commit - image tag might be the same"
             exit 0
           fi
           
@@ -171,23 +174,31 @@ jobs:
           
           # Commit and push changes
           git add ${{ env.DEPLOYMENT_FILE_PATH }}
-          git commit -m "chore(deployment): update image tag to ${{ env.IMAGE_TAG }}
+          git commit -m "chore(deployment): update image tag to ${IMAGE_TAG}
 
-          - Updated backend image tag to ${{ env.DEPLOYMENT_FILE_PATH }}
+          - Updated docker image tag to ${IMAGE_TAG}
           - Deployed version: ${{ env.IMAGE_TAG }}
+          - Service: ${{ env.SERVICE_TYPE }}
+          - Environment: ${{ env.ENVIRONMENT }}
           - Triggered by GitHub Actions run #${{ github.run_number }}
           
           Co-authored-by: ${{ github.actor }} <${{ github.actor }}@users.noreply.github.com>"
           
-          git push origin HEAD:${{ vars.DEPLOYMENT_BRANCH_NAME}}
+          git push origin HEAD:${{ vars.DEPLOYMENT_BRANCH_NAME }}
+          echo "✅ Changes pushed successfully"
           
       - name: Create annotation with updated tag
         if: success()
         run: |
           echo "::notice::Deployment file updated successfully with image tag: ${{ env.IMAGE_TAG }}"
           
-      # - name: Send notification on failure
-      #   if: failure()
-      #   run: |
-      #     echo "::error::Failed to update deployment file in repository"
-      #     # You can add Slack/Teams webhook notifications here if needed
+      - name: Send notification on failure
+        if: failure()
+        run: |
+          echo "::error::Failed to update deployment file in repository"
+          echo "Please check:"
+          echo "  - DEPLOYMENT_REPO_PAT secret is valid"
+          echo "  - Deployment file path exists: ${{ env.DEPLOYMENT_FILE_PATH }}"
+          echo "  - Repository name: ${{ vars.DEPLOYMENT_REPO_NAME }}"
+          echo "  - Branch name: ${{ vars.DEPLOYMENT_BRANCH_NAME }}"
+          # You can add Slack/Teams webhook notifications here if 
